@@ -6,10 +6,11 @@ build-backend = "hatchling.build"
 name = "forest-cli"
 version = "0.1.0"
 description = "Find local Sarasota suppliers for your food forest"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "click>=8.1,<8.2",
     "rich>=13.0",
+    "anthropic>=0.25",
 ]
 
 [project.scripts]
