@@ -65,3 +65,57 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
    '7281 Fruitville Rd, Sarasota, FL 34240',
    '(941) 371-2533',
    'https://southernstates.com');
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Punta Gorda Nursery',
+   '2011 Shreve St, Punta Gorda, FL 33950',
+   '(941) 639-0200',
+   NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Green Thumb Nursery — Venice',
+   '650 Center Rd, Venice, FL 34285',
+   '(941) 484-4989',
+   NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Sarasota Farmers Market',
+   '1 N Lemon Ave, Sarasota, FL 34236',
+   '(941) 225-9256',
+   'https://sarasotafarmersmarket.org');
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Tropicana Nursery',
+   '5610 Palmer Blvd, Sarasota, FL 34232',
+   '(941) 371-2662',
+   NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Tropical Nursery of SW Florida',
+   '3520 Placida Rd, Englewood, FL 34224',
+   '(941) 698-0200',
+   NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Home Depot Garden Center — Sarasota',
+   '3010 Fruitville Rd, Sarasota, FL 34237',
+   '(941) 953-0700',
+   'https://homedepot.com');
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Lowes Garden Center — Sarasota',
+   '3591 Cattlemen Rd, Sarasota, FL 34232',
+   '(941) 371-8400',
+   'https://lowes.com');
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Ace Hardware & Feed — Osprey',
+   '13150 S Tamiami Trail, Osprey, FL 34229',
+   '(941) 966-2222',
+   NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Venice Seed & Garden',
+   '303 W Venice Ave, Venice, FL 34285',
+   '(941) 485-3200',
+   NULL);
