@@ -145,7 +145,7 @@ testpaths = ["tests"]
 pip install -e ".[dev]"
 ```
 
-Expected: installs without errors, `forest --help` prints usage.
+Expected: installs without errors. (`forest --help` will error at this stage because `cli.py` does not exist yet — that is expected.)
 
 **Step 5: Commit**
 
@@ -184,7 +184,7 @@ def db():
     return conn
 ```
 
-**Step 3: Write the failing tests**
+**Step 2: Write the failing tests**
 
 ```python
 # tests/test_db.py
@@ -246,7 +246,7 @@ def test_list_suppliers_filtered_by_category(db):
     assert len(irrigation) >= 1
 ```
 
-**Step 4: Run tests to verify they fail**
+**Step 3: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_db.py -v
@@ -254,7 +254,7 @@ pytest tests/test_db.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'forest_cli.db'`
 
-**Step 5: Create `src/forest_cli/data/seed.sql`**
+**Step 4: Create `src/forest_cli/data/seed.sql`**
 
 ```sql
 -- Categories
@@ -329,7 +329,9 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
 -- Items per supplier are inserted by seed_db() Python function for clarity.
 ```
 
-**Step 4: Create `src/forest_cli/db.py`**
+**Step 5: Create `src/forest_cli/data/__init__.py`** (empty file — required for `importlib.resources.files("forest_cli.data")` to work)
+
+**Step 6: Create `src/forest_cli/db.py`**
 
 ```python
 """Database initialization, seeding, and query helpers for forest-cli."""
@@ -539,8 +541,6 @@ def add_supplier(
     conn.commit()
     return supplier_id
 ```
-
-**Step 6: Create `src/forest_cli/data/__init__.py`** (empty)
 
 **Step 7: Run tests**
 
