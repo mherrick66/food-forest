@@ -41,7 +41,8 @@ def search(query: str) -> None:
 
     for row in results:
         detail = supplier_detail(conn, row["id"])
-        _print_supplier_card(detail)
+        if detail is not None:
+            _print_supplier_card(detail)
 
 
 @main.command("list-categories")

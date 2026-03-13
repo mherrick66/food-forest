@@ -72,6 +72,21 @@ def test_missing_db_path_raises_or_creates(tmp_path):
     conn.close()
 
 
+# supplier_detail returns None for non-existent supplier
+def test_supplier_detail_missing_returns_none(db):
+    detail = supplier_detail(db, 999999)
+    assert detail is None
+
+
+# T-24 (DB-side): supplier_detail returns None website for null-website supplier
+def test_supplier_detail_null_website(db):
+    row = db.execute("SELECT id FROM suppliers WHERE name LIKE '%Sweet Bay%'").fetchone()
+    assert row is not None
+    detail = supplier_detail(db, row["id"])
+    assert detail is not None
+    assert detail["website"] is None
+
+
 # T-43: supplier_detail returns categories and items
 def test_supplier_detail_includes_categories_and_items(db):
     row = db.execute("SELECT id FROM suppliers WHERE name LIKE '%Ewing%'").fetchone()
@@ -90,6 +105,14 @@ def test_add_supplier_inserts_and_returns_id(db):
     assert row["name"] == "Test Farm"
     item_row = db.execute("SELECT name FROM items WHERE supplier_id = ?", (new_id,)).fetchone()
     assert item_row["name"] == "Blueberry"
+
+
+# add_supplier items are searchable (have category_id set)
+def test_add_supplier_items_are_searchable(db):
+    add_supplier(db, "Search Farm", "", "", "", ["plants"], ["Dragonfruit"])
+    results = search_suppliers(db, "Dragonfruit")
+    assert len(results) == 1
+    assert results[0]["name"] == "Search Farm"
 
 
 # T-45: add_supplier inserts new category if absent

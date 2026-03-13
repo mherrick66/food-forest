@@ -11,7 +11,7 @@ _DEFAULT_DB_PATH = Path.home() / ".local" / "share" / "forest-cli" / "forest.db"
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS suppliers (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name    TEXT NOT NULL,
+    name    TEXT NOT NULL UNIQUE,
     address TEXT,
     phone   TEXT,
     website TEXT
@@ -141,9 +141,11 @@ def _supplier_categories(conn: sqlite3.Connection, supplier_id: int) -> "list[st
     return [r["name"] for r in rows]
 
 
-def supplier_detail(conn: sqlite3.Connection, supplier_id: int) -> "dict[str, Any]":
-    """Return full supplier info including categories and items."""
+def supplier_detail(conn: sqlite3.Connection, supplier_id: int) -> "dict[str, Any] | None":
+    """Return full supplier info including categories and items, or None if not found."""
     row = conn.execute("SELECT * FROM suppliers WHERE id = ?", (supplier_id,)).fetchone()
+    if row is None:
+        return None
     d = dict(row)
     d["categories"] = _supplier_categories(conn, supplier_id)
     d["items"] = _supplier_items(conn, supplier_id)
@@ -188,17 +190,21 @@ def add_supplier(
         (name, address, phone, website),
     )
     supplier_id = cur.lastrowid
+    category_ids = []
     for cat_name in categories:
         conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (cat_name,))
         cat_row = conn.execute("SELECT id FROM categories WHERE name = ?", (cat_name,)).fetchone()
+        category_ids.append(cat_row["id"])
         conn.execute(
             "INSERT OR IGNORE INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)",
             (supplier_id, cat_row["id"]),
         )
+    # Use the first category_id for items (if any categories given)
+    default_cat_id = category_ids[0] if category_ids else None
     for item_name in items:
         conn.execute(
-            "INSERT INTO items (supplier_id, name) VALUES (?, ?)",
-            (supplier_id, item_name),
+            "INSERT INTO items (supplier_id, name, category_id) VALUES (?, ?, ?)",
+            (supplier_id, item_name, default_cat_id),
         )
     conn.commit()
     return supplier_id
