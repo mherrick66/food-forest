@@ -1,7 +1,7 @@
 # tests/test_cli.py
 import pytest
 from click.testing import CliRunner
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from forest_cli.cli import main
 
 

@@ -1,4 +1,5 @@
 # tests/test_db.py
+import pytest
 from forest_cli.db import search_suppliers, list_categories, list_suppliers, supplier_detail, add_supplier, get_connection
 
 
@@ -57,6 +58,16 @@ def test_list_suppliers_filtered_by_category(db):
     assert len(irrigation) >= 1
 
 
+# LIKE wildcards in search query are escaped
+def test_search_like_wildcards_escaped(db):
+    # "%" should not match everything -- no item/category literally contains "%"
+    results_pct = search_suppliers(db, "%")
+    assert results_pct == []
+    # Without escaping, "%" would match all suppliers; verify it does not
+    all_suppliers = list_suppliers(db)
+    assert len(all_suppliers) > len(results_pct)
+
+
 # T-22: SQL injection does not destroy data
 def test_search_sql_injection_db_intact(db):
     search_suppliers(db, "'; DROP TABLE suppliers; --")
@@ -107,12 +118,27 @@ def test_add_supplier_inserts_and_returns_id(db):
     assert item_row["name"] == "Blueberry"
 
 
-# add_supplier items are searchable (have category_id set)
+# add_supplier items are searchable (even without category_id via LEFT JOIN)
 def test_add_supplier_items_are_searchable(db):
     add_supplier(db, "Search Farm", "", "", "", ["plants"], ["Dragonfruit"])
     results = search_suppliers(db, "Dragonfruit")
     assert len(results) == 1
     assert results[0]["name"] == "Search Farm"
+
+
+# add_supplier items with no categories are still searchable by item name
+def test_add_supplier_items_searchable_without_category(db):
+    add_supplier(db, "Bare Farm", "", "", "", [], ["Persimmon"])
+    results = search_suppliers(db, "Persimmon")
+    assert len(results) == 1
+    assert results[0]["name"] == "Bare Farm"
+
+
+# add_supplier raises ValueError on duplicate name
+def test_add_supplier_duplicate_name_raises(db):
+    add_supplier(db, "Unique Farm", "", "", "", ["plants"], ["Rose"])
+    with pytest.raises(ValueError, match="already exists"):
+        add_supplier(db, "Unique Farm", "other addr", "", "", ["seeds"], ["Corn"])
 
 
 # T-45: add_supplier inserts new category if absent
