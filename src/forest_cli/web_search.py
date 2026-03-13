@@ -43,6 +43,21 @@ def search_web(client: Any, query: str) -> list[dict[str, str]]:
         lines = raw_text.splitlines()
         raw_text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
+    # Extract just the JSON array if there's trailing text after it
+    if "[" in raw_text:
+        start = raw_text.index("[")
+        depth, end = 0, -1
+        for i, ch in enumerate(raw_text[start:], start):
+            if ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end != -1:
+            raw_text = raw_text[start:end]
+
     try:
         results = json.loads(raw_text)
         if not isinstance(results, list):
