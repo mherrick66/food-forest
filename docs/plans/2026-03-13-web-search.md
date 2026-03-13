@@ -299,27 +299,7 @@ import anthropic
 from forest_cli.web_search import search_web
 ```
 
-2. Add `_print_web_supplier_card` helper function before the `web_search_cmd` command (define before use, consistent with `_print_supplier_card` placement):
-
-```python
-def _print_web_supplier_card(supplier: dict) -> None:
-    """Print a Rich-formatted card for a web-search result."""
-    panel_content = []
-    if supplier.get("address"):
-        panel_content.append(f"[dim]Address:[/dim]  {supplier['address']}")
-    if supplier.get("phone"):
-        panel_content.append(f"[dim]Phone:[/dim]    [green]{supplier['phone']}[/green]")
-    if supplier.get("website"):
-        panel_content.append(f"[dim]Website:[/dim]  [blue]{supplier['website']}[/blue]")
-    panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
-
-    console.rule(f"[bold cyan]{supplier.get('name', 'Unknown')}[/bold cyan]")
-    for line in panel_content:
-        console.print(f"  {line}")
-    console.print()
-```
-
-3. Add the `web-search` command after `add_supplier_cmd` (and after `_print_web_supplier_card`):
+2. Add the `web-search` command after `add_supplier_cmd`. The existing `_print_supplier_card` helper is defined after all commands at the bottom of the file — follow the same pattern and append `_print_web_supplier_card` after `_print_supplier_card` at the very end of `cli.py`. Python resolves function names at call time, not definition time, so helpers defined after commands work fine (as the existing code already demonstrates).
 
 ```python
 @main.command("web-search")
@@ -362,7 +342,25 @@ def web_search_cmd(query: str) -> None:
         _print_web_supplier_card(supplier)
 ```
 
-**Note on placement:** `_print_web_supplier_card` must be defined before `web_search_cmd` in the file. Place it immediately before the `@main.command("web-search")` decorator line.
+3. Append `_print_web_supplier_card` at the end of `cli.py`, after the existing `_print_supplier_card` function (which is already defined after all commands — match that pattern):
+
+```python
+def _print_web_supplier_card(supplier: dict) -> None:
+    """Print a Rich-formatted card for a web-search result."""
+    panel_content = []
+    if supplier.get("address"):
+        panel_content.append(f"[dim]Address:[/dim]  {supplier['address']}")
+    if supplier.get("phone"):
+        panel_content.append(f"[dim]Phone:[/dim]    [green]{supplier['phone']}[/green]")
+    if supplier.get("website"):
+        panel_content.append(f"[dim]Website:[/dim]  [blue]{supplier['website']}[/blue]")
+    panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
+
+    console.rule(f"[bold cyan]{supplier.get('name', 'Unknown')}[/bold cyan]")
+    for line in panel_content:
+        console.print(f"  {line}")
+    console.print()
+```
 
 **Step 4: Run tests to verify they pass**
 
