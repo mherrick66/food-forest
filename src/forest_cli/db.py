@@ -139,19 +139,20 @@ def _escape_like(text: str) -> str:
 
 
 def search_suppliers(conn: sqlite3.Connection, query: str) -> list[dict[str, Any]]:
-    """Return suppliers whose items or categories match query (case-insensitive substring)."""
+    """Return suppliers whose name, items, or categories match query (case-insensitive substring)."""
     escaped = _escape_like(query.lower())
     pattern = f"%{escaped}%"
     sql = """
         SELECT DISTINCT s.id, s.name, s.address, s.phone, s.website
         FROM suppliers s
-        JOIN items i ON i.supplier_id = s.id
+        LEFT JOIN items i ON i.supplier_id = s.id
         LEFT JOIN categories c ON c.id = i.category_id
-        WHERE LOWER(i.name) LIKE ? ESCAPE '\\'
+        WHERE LOWER(s.name) LIKE ? ESCAPE '\\'
+           OR LOWER(i.name) LIKE ? ESCAPE '\\'
            OR LOWER(c.name) LIKE ? ESCAPE '\\'
         ORDER BY s.name
     """
-    rows = conn.execute(sql, (pattern, pattern)).fetchall()
+    rows = conn.execute(sql, (pattern, pattern, pattern)).fetchall()
     return [dict(r) for r in rows]
 
 

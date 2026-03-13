@@ -82,7 +82,7 @@ class TestSearchWeb:
         client = _mock_client_response(fake)
         search_web(client, "moringa")
         call_kwargs = client.messages.create.call_args[1]
-        assert call_kwargs["model"] == "claude-3-5-haiku-20241022"
+        assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
 
     def test_max_tokens_at_least_512(self):
         fake = [{"name": "X", "address": "", "phone": "", "website": ""}]
