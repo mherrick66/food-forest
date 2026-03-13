@@ -33,6 +33,7 @@ def test_search_suppliers_by_category(db):
 def test_search_suppliers_case_insensitive(db):
     lower = search_suppliers(db, "mango")
     upper = search_suppliers(db, "MANGO")
+    assert len(lower) >= 1
     assert len(lower) == len(upper)
 
 

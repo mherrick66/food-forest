@@ -64,6 +64,7 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     init_db(conn)
     if conn.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0] == 0:
         seed_db(conn)

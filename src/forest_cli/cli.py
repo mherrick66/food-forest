@@ -103,7 +103,10 @@ def add_supplier_cmd() -> None:
     items = [i.strip() for i in items_input.split(",") if i.strip()]
 
     conn = get_connection()
-    supplier_id = add_supplier(conn, name, address, phone, website, categories, items)
+    try:
+        supplier_id = add_supplier(conn, name, address, phone, website, categories, items)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
 
     console.print(f"\n[green bold]Added '[italic]{name}[/italic]' (id={supplier_id})[/green bold]")
 

@@ -206,6 +206,16 @@ class TestAddSupplierCommand:
         assert result.exit_code == 0
         assert captured["items"] == ["Blueberry", "Strawberry", "Loquat"]
 
+    def test_add_supplier_duplicate_name_exits_nonzero(self, runner):
+        with patch("forest_cli.cli.get_connection"), \
+             patch("forest_cli.cli.add_supplier", side_effect=ValueError("Supplier 'Dup Farm' already exists")):
+            result = runner.invoke(
+                main, ["add-supplier"],
+                input="Dup Farm\n\n\n\nplants\nSomething\n"
+            )
+        assert result.exit_code != 0
+        assert "already exists" in result.output or "already exists" in result.stderr
+
 
 # --- Invariant Tests ---
 
