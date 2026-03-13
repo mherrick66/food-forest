@@ -136,7 +136,7 @@ testpaths = ["tests"]
 
 ```python
 # tests/conftest.py
-# Shared fixtures go here.
+# Shared fixtures — populated in Task 2 once db.py exists.
 ```
 
 **Step 4: Install in editable mode**
@@ -161,24 +161,34 @@ git commit -m "chore: scaffold project structure"
 **Files:**
 - Create: `src/forest_cli/db.py`
 - Create: `src/forest_cli/data/seed.sql`
+- Create: `src/forest_cli/data/__init__.py`
+- Modify: `tests/conftest.py`
 - Create: `tests/test_db.py`
 
-**Step 1: Write the failing tests**
+**Step 1: Update `tests/conftest.py` with the shared `db` fixture**
 
 ```python
-# tests/test_db.py
+# tests/conftest.py
 import sqlite3
 import pytest
-from forest_cli.db import init_db, seed_db, search_suppliers, list_categories, list_suppliers
+from forest_cli.db import init_db, seed_db
+
 
 @pytest.fixture
 def db():
-    """In-memory DB, initialized and seeded."""
+    """In-memory SQLite DB, initialized and seeded. Shared across test modules."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     init_db(conn)
     seed_db(conn)
     return conn
+```
+
+**Step 3: Write the failing tests**
+
+```python
+# tests/test_db.py
+from forest_cli.db import search_suppliers, list_categories, list_suppliers
 
 
 def test_init_db_creates_tables(db):
@@ -236,7 +246,7 @@ def test_list_suppliers_filtered_by_category(db):
     assert len(irrigation) >= 1
 ```
 
-**Step 2: Run tests to verify they fail**
+**Step 4: Run tests to verify they fail**
 
 ```bash
 pytest tests/test_db.py -v
@@ -244,7 +254,7 @@ pytest tests/test_db.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'forest_cli.db'`
 
-**Step 3: Create `src/forest_cli/data/seed.sql`**
+**Step 5: Create `src/forest_cli/data/seed.sql`**
 
 ```sql
 -- Categories
@@ -254,62 +264,62 @@ INSERT OR IGNORE INTO categories (name) VALUES ('irrigation');
 INSERT OR IGNORE INTO categories (name) VALUES ('seeds');
 INSERT OR IGNORE INTO categories (name) VALUES ('livestock');
 
--- Suppliers
-INSERT INTO suppliers (name, address, phone, website) VALUES
+-- Suppliers (INSERT OR IGNORE so seed.sql is idempotent)
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Wilsons Nursery & Landscaping',
    '4218 Bee Ridge Rd, Sarasota, FL 34233',
    '(941) 378-0600',
    'https://wilsonsnursery.net');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Sweet Bay Nursery',
    '6831 Swift Rd, Sarasota, FL 34231',
    '(941) 923-6909',
    NULL);
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('J&P Tropicals',
    '7150 Hatton Ave, North Port, FL 34287',
    '(941) 426-1145',
    'https://jptropicals.com');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Ewing Irrigation & Landscape Supply',
    '1725 Cattlemen Rd, Sarasota, FL 34232',
    '(941) 371-3331',
    'https://ewing1.com');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('SiteOne Landscape Supply',
    '8750 Fruitville Rd, Sarasota, FL 34240',
    '(941) 377-9922',
    'https://siteone.com');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Suncoast Hydroponics',
    '1208 53rd Ave E, Bradenton, FL 34203',
    '(941) 753-4769',
    'https://suncoasthydroponics.com');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Tractor Supply Co. — Sarasota',
    '6240 S Tamiami Trail, Sarasota, FL 34231',
    '(941) 923-1113',
    'https://tractorsupply.com');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Myakka City Feed & Farm Supply',
    '10900 State Road 70 E, Myakka City, FL 34251',
    '(941) 322-1500',
    NULL);
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Sarasota County Extension Office',
    '6700 Clark Rd, Sarasota, FL 34241',
    '(941) 861-9900',
    'https://sfyl.ifas.ufl.edu/sarasota');
 
-INSERT INTO suppliers (name, address, phone, website) VALUES
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Southern States — Sarasota',
    '7281 Fruitville Rd, Sarasota, FL 34240',
    '(941) 371-2533',
@@ -402,12 +412,10 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 def seed_db(conn: sqlite3.Connection) -> None:
     """Insert seed supplier and item data."""
-    # Read supplier base rows from seed.sql (address/phone/website)
-    try:
-        sql_text = importlib.resources.files("forest_cli.data").joinpath("seed.sql").read_text()
-        conn.executescript(sql_text)
-    except Exception:
-        pass  # seed.sql is optional; items are inserted below
+    # executescript() issues an implicit COMMIT before running, so call it first
+    # while no in-flight transaction exists.
+    sql_text = importlib.resources.files("forest_cli.data").joinpath("seed.sql").read_text()
+    conn.executescript(sql_text)
 
     # Insert categories
     for cat in ("plants", "fruit_trees", "irrigation", "seeds", "livestock"):
@@ -532,9 +540,9 @@ def add_supplier(
     return supplier_id
 ```
 
-**Step 5: Create `src/forest_cli/data/__init__.py`** (empty)
+**Step 6: Create `src/forest_cli/data/__init__.py`** (empty)
 
-**Step 6: Run tests**
+**Step 7: Run tests**
 
 ```bash
 pytest tests/test_db.py -v
@@ -542,16 +550,16 @@ pytest tests/test_db.py -v
 
 Expected: all tests PASS.
 
-**Step 7: Commit**
+**Step 8: Commit**
 
 ```bash
-git add src/forest_cli/db.py src/forest_cli/data/__init__.py src/forest_cli/data/seed.sql tests/test_db.py
+git add src/forest_cli/db.py src/forest_cli/data/__init__.py src/forest_cli/data/seed.sql tests/conftest.py tests/test_db.py
 git commit -m "feat: add db module with schema, seed data, and query helpers"
 ```
 
 ---
 
-## Task 3: CLI — `forest search` and `forest list-categories`
+## Task 3: CLI — all four commands
 
 **Files:**
 - Create: `src/forest_cli/cli.py`
@@ -866,55 +874,30 @@ git commit -m "feat: add CLI commands search, list-categories, list-suppliers, a
 **Step 1: Add integration test at bottom of `tests/test_cli.py`**
 
 ```python
-# --- Integration test (real in-memory DB, no mocks) ---
+# --- Integration tests (real in-memory DB, no mocks) ---
+# `db` fixture comes from conftest.py — already initialized and seeded.
 
 class TestIntegration:
     """Smoke tests against real seeded DB (no mocks)."""
 
     @pytest.fixture
-    def real_runner(self, tmp_path):
-        """Runner with a temp DB path."""
-        runner = CliRunner(mix_stderr=False)
-        return runner, tmp_path / "forest.db"
+    def int_runner(self):
+        return CliRunner(mix_stderr=False)
 
-    def test_search_wax_myrtle_returns_results(self, real_runner):
-        runner, db_path = real_runner
-        with patch("forest_cli.cli.get_connection") as mock_get:
-            import sqlite3 as _sqlite3
-            from forest_cli.db import init_db, seed_db
-            conn = _sqlite3.connect(str(db_path))
-            conn.row_factory = _sqlite3.Row
-            init_db(conn)
-            seed_db(conn)
-            mock_get.return_value = conn
-            result = runner.invoke(main, ["search", "wax myrtle"])
+    def test_search_wax_myrtle_returns_results(self, int_runner, db):
+        with patch("forest_cli.cli.get_connection", return_value=db):
+            result = int_runner.invoke(main, ["search", "wax myrtle"])
         assert result.exit_code == 0
         assert "Wax Myrtle" in result.output or "Wilsons" in result.output or "Sweet Bay" in result.output
 
-    def test_search_nonexistent_exits_zero(self, real_runner):
-        runner, db_path = real_runner
-        with patch("forest_cli.cli.get_connection") as mock_get:
-            import sqlite3 as _sqlite3
-            from forest_cli.db import init_db, seed_db
-            conn = _sqlite3.connect(str(db_path))
-            conn.row_factory = _sqlite3.Row
-            init_db(conn)
-            seed_db(conn)
-            mock_get.return_value = conn
-            result = runner.invoke(main, ["search", "xyzzy_nonexistent_9999"])
+    def test_search_nonexistent_exits_zero(self, int_runner, db):
+        with patch("forest_cli.cli.get_connection", return_value=db):
+            result = int_runner.invoke(main, ["search", "xyzzy_nonexistent_9999"])
         assert result.exit_code == 0
 
-    def test_list_categories_shows_five_categories(self, real_runner):
-        runner, db_path = real_runner
-        with patch("forest_cli.cli.get_connection") as mock_get:
-            import sqlite3 as _sqlite3
-            from forest_cli.db import init_db, seed_db
-            conn = _sqlite3.connect(str(db_path))
-            conn.row_factory = _sqlite3.Row
-            init_db(conn)
-            seed_db(conn)
-            mock_get.return_value = conn
-            result = runner.invoke(main, ["list-categories"])
+    def test_list_categories_shows_five_categories(self, int_runner, db):
+        with patch("forest_cli.cli.get_connection", return_value=db):
+            result = int_runner.invoke(main, ["list-categories"])
         assert result.exit_code == 0
         for cat in ["plants", "fruit_trees", "irrigation", "seeds", "livestock"]:
             assert cat in result.output
