@@ -79,6 +79,7 @@ SEED_ITEMS: list[tuple[str, str, list[str]]] = [
     ("Ace Hardware & Feed — Osprey",  "irrigation",  ["drip tape", "garden hose", "soaker hose", "timer"]),
     ("Venice Seed & Garden",          "seeds",       ["cover crop mix", "heirloom tomato seed", "herb seed mix", "pepper seed", "squash seed", "sunflower seed", "wildflower mix"]),
     ("Venice Seed & Garden",          "plants",      ["herb starts", "native plants", "vegetable starts"]),
+    ("Natives Nursery",               "plants",      ["native plants", "Florida native shrubs", "native groundcovers", "native trees"]),
 ]
 
 

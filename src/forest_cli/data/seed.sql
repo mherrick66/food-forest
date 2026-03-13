@@ -119,3 +119,9 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
    '303 W Venice Ave, Venice, FL 34285',
    '(941) 485-3200',
    NULL);
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Natives Nursery',
+   '6959 Adastra Lane, Sarasota, FL 34241',
+   '(941) 342-1566',
+   'https://nativesflorida.com');
