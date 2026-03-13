@@ -4,7 +4,7 @@
 
 **Goal:** Add a `forest web-search` command that uses the Anthropic Claude API to find suppliers, complementing (not replacing) the existing local `forest search` command.
 
-**Architecture:** A new `web_search.py` module calls the Anthropic Claude API with a structured prompt asking Claude to recall suppliers near Sarasota, FL from its training knowledge. Results are printed in the same Rich card format as the existing `search` command. The local DB is never touched by this feature.
+**Architecture:** A new `web_search.py` module calls the Anthropic Claude API with a structured prompt asking Claude to recall suppliers near Sarasota, FL from its training knowledge. Results are printed using the existing `_print_supplier_card()` helper (extended with an optional `ai_sourced` flag) to stay DRY. The local DB is never touched by this feature.
 
 **Important framing:** This is not a live internet search — it queries Claude's training knowledge about local businesses. The command is still named `web-search` because it retrieves information not in the local DB, but all output is clearly labelled as AI-sourced so users know to verify. The CLI docstring must not claim "internet" access.
 
@@ -18,15 +18,25 @@
 
 Call `claude-3-5-haiku-20241022` (fast, cheap) with a system prompt asking it to list real local suppliers for a given item in the Sarasota, FL area. Claude's training data includes business listings and can synthesize plausible results. No `web_search` tool needed — a plain completion works and avoids needing extra API permissions.
 
-API key: read from env var `ANTHROPIC_API_KEY`. If unset, print a clear error and exit 1.
+API key: read from env var `ANTHROPIC_API_KEY`. If unset, raise `click.ClickException` and exit 1.
 
 ### Output Format
 
-Results printed as Rich-formatted cards matching the pattern of `_print_supplier_card()` in `cli.py`. Each card shows: name, address (if known), phone (if known), website (if known), plus a note that it is AI-sourced so the user knows to verify.
+Results printed using the existing `_print_supplier_card()` in `cli.py`, extended with an optional `ai_sourced=False` parameter that appends `[dim italic]Source: AI-generated — verify before visiting[/dim italic]` after the normal card fields. This avoids duplicating 12 lines of Rich formatting logic. The web-search command passes `ai_sourced=True`.
+
+**Why extend rather than duplicate:** `_print_supplier_card` already handles `None` values gracefully via `if detail.get(...)`. Web results simply lack `categories` and `items` keys — those `if` branches are skipped naturally. The only delta is the AI-sourced disclaimer line. Keeping one function makes both `search` and `web-search` consistent by construction.
 
 ### Response Parsing
 
-Ask Claude to return JSON (structured output). Use a system prompt that requests a JSON array of supplier objects with keys: `name`, `address`, `phone`, `website`. Parse with `json.loads`. Strip markdown code fences if present. If parse fails, fall back to printing the raw text with a warning.
+Ask Claude to return JSON. Use a system prompt that requests a JSON array of supplier objects with keys: `name`, `address`, `phone`, `website`. Parse with `json.loads`. Strip markdown code fences if present. If parse fails, fall back to a `[{"_raw": <text>}]` sentinel list. The CLI displays the raw text with a warning in this case.
+
+### Import Strategy
+
+Import `anthropic` inside the `web_search_cmd` function body, not at module level. This avoids loading the heavy Anthropic SDK (and its transitive dependencies) for every invocation of `forest search`, `forest list-categories`, etc. `from forest_cli.web_search import search_web` at module level is fine — `web_search.py` itself only imports `json` and `typing`, both stdlib.
+
+### Test Stderr Behaviour
+
+The test suite uses `CliRunner(mix_stderr=False)`. In this mode, `ClickException` messages (and all stderr output) go to `result.stderr`, not `result.output`. Any test asserting on error messages **must** check `result.stderr`, not `result.output`. This is an established pattern in the existing suite (see `test_add_supplier_duplicate_name_exits_nonzero`).
 
 ---
 
@@ -37,12 +47,20 @@ Ask Claude to return JSON (structured output). Use a system prompt that requests
 
 **Step 1: Add the dependency**
 
-Edit `pyproject.toml`, add `"anthropic>=0.25"` to `dependencies`.
+Edit `pyproject.toml`, add `"anthropic>=0.25"` to `dependencies`:
+
+```toml
+dependencies = [
+    "click>=8.1,<8.2",
+    "rich>=13.0",
+    "anthropic>=0.25",
+]
+```
 
 **Step 2: Install it**
 
 ```bash
-pip install -e ".[dev]"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && pip install -e ".[dev]"
 ```
 
 Expected: `Successfully installed anthropic-...`
@@ -58,8 +76,7 @@ Expected: version number printed, no error.
 **Step 4: Commit**
 
 ```bash
-git add pyproject.toml
-git commit -m "feat: add anthropic dependency for web-search feature"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && git add pyproject.toml && git commit -m "feat: add anthropic dependency for web-search feature"
 ```
 
 ---
@@ -77,7 +94,7 @@ Create `tests/test_web_search.py`:
 ```python
 # tests/test_web_search.py
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 
 from forest_cli.web_search import search_web
@@ -129,10 +146,10 @@ class TestSearchWeb:
         fake = [{"name": "X", "address": "", "phone": "", "website": ""}]
         client = _mock_client_response(fake)
         search_web(client, "jackfruit")
-        call_kwargs = client.messages.create.call_args
-        # call_args is a call object: [0] is positional args tuple, [1] is kwargs dict
-        all_args_str = str(call_kwargs[0]) + str(call_kwargs[1])
-        assert "jackfruit" in all_args_str.lower()
+        call_kwargs = client.messages.create.call_args[1]
+        # The query must appear somewhere in the messages list
+        messages_str = str(call_kwargs.get("messages", ""))
+        assert "jackfruit" in messages_str.lower()
 ```
 
 **Step 2: Run test to verify it fails**
@@ -213,8 +230,7 @@ Expected: All 5 tests PASS.
 **Step 5: Commit**
 
 ```bash
-git add src/forest_cli/web_search.py tests/test_web_search.py
-git commit -m "feat: add web_search module with Claude API call and tests"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && git add src/forest_cli/web_search.py tests/test_web_search.py && git commit -m "feat: add web_search module with Claude API call and tests"
 ```
 
 ---
@@ -227,13 +243,11 @@ git commit -m "feat: add web_search module with Claude API call and tests"
 
 **Step 1: Write the failing test**
 
-Add to `tests/test_cli.py` (at end of file, before or after the last class):
+Add to `tests/test_cli.py` (at end of file, before or after the last class). Note: `runner` fixture is already defined in this file; `monkeypatch` is a built-in pytest fixture. Both work as method parameters in a class-based test.
+
+Note on stderr: `CliRunner(mix_stderr=False)` separates stdout and stderr. `click.ClickException` writes to stderr. Tests that assert on error messages use `result.stderr`. Tests that assert on successful output use `result.output` (stdout).
 
 ```python
-# Add at top with other imports if not already present:
-# from unittest.mock import patch  (already imported)
-# import os  (not needed — monkeypatch handles env)
-
 class TestWebSearchCommand:
     # W-01: command exists and shows help
     def test_web_search_help(self, runner):
@@ -241,14 +255,15 @@ class TestWebSearchCommand:
         assert result.exit_code == 0
         assert "QUERY" in result.output or "query" in result.output.lower()
 
-    # W-02: missing ANTHROPIC_API_KEY prints error and exits nonzero
+    # W-02: missing ANTHROPIC_API_KEY prints error to stderr and exits nonzero
     def test_web_search_no_api_key_exits_nonzero(self, runner, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         result = runner.invoke(main, ["web-search", "moringa"])
         assert result.exit_code != 0
-        assert "ANTHROPIC_API_KEY" in result.output or "api key" in result.output.lower()
+        # ClickException writes to stderr when mix_stderr=False
+        assert "ANTHROPIC_API_KEY" in result.stderr or "api key" in result.stderr.lower()
 
-    # W-03: successful search prints supplier name
+    # W-03: successful search prints supplier name to stdout
     def test_web_search_prints_supplier_name(self, runner, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
         fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
@@ -265,18 +280,27 @@ class TestWebSearchCommand:
         assert result.exit_code == 0
         assert "no" in result.output.lower() or "not found" in result.output.lower()
 
-    # W-05: raw fallback result prints warning and raw text
+    # W-05: raw fallback result prints warning and raw text to stdout
     def test_web_search_raw_fallback_prints_warning(self, runner, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
         with patch("forest_cli.cli.search_web", return_value=[{"_raw": "some raw text"}]):
             result = runner.invoke(main, ["web-search", "avocado"])
         assert result.exit_code == 0
+        # Warning message and raw text both go to stdout (not ClickException)
         assert "raw" in result.output.lower() or "some raw text" in result.output
 
     # W-06: main help lists web-search command
     def test_main_help_includes_web_search(self, runner):
         result = runner.invoke(main, ["--help"])
         assert "web-search" in result.output
+
+    # W-07: no stderr on successful web-search (consistent with TestNoStderr)
+    def test_no_stderr_on_web_search(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.stderr == ""
 ```
 
 **Step 2: Run test to verify it fails**
@@ -291,15 +315,15 @@ Expected: `AttributeError` or `UsageError` — `web-search` command not found.
 
 Edit `src/forest_cli/cli.py`:
 
-1. Add imports near the top, after existing imports:
+**3a. Add import at top**, after existing imports:
 
 ```python
-import os
-import anthropic
 from forest_cli.web_search import search_web
 ```
 
-2. Add the `web-search` command after `add_supplier_cmd`. The existing `_print_supplier_card` helper is defined after all commands at the bottom of the file — follow the same pattern and append `_print_web_supplier_card` after `_print_supplier_card` at the very end of `cli.py`. Python resolves function names at call time, not definition time, so helpers defined after commands work fine (as the existing code already demonstrates).
+Do NOT add `import anthropic` or `import os` at module level. Both are imported lazily inside `web_search_cmd` (see 3b). `search_web` itself only imports `json` — no heavy startup cost.
+
+**3b. Add the `web-search` command** after `add_supplier_cmd`:
 
 ```python
 @main.command("web-search")
@@ -313,6 +337,9 @@ def web_search_cmd(query: str) -> None:
     Requires ANTHROPIC_API_KEY environment variable.
     Results are AI-generated — verify before visiting.
     """
+    import os
+    import anthropic
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise click.ClickException(
@@ -339,28 +366,35 @@ def web_search_cmd(query: str) -> None:
     console.print(f"[green bold]Found {len(results)} supplier(s) (AI-generated — verify before visiting):[/green bold]\n")
 
     for supplier in results:
-        _print_web_supplier_card(supplier)
+        _print_supplier_card(supplier, ai_sourced=True)
 ```
 
-3. Append `_print_web_supplier_card` at the end of `cli.py`, after the existing `_print_supplier_card` function (which is already defined after all commands — match that pattern):
+**3c. Extend `_print_supplier_card`** at the bottom of `cli.py` to accept an `ai_sourced` parameter:
 
 ```python
-def _print_web_supplier_card(supplier: dict) -> None:
-    """Print a Rich-formatted card for a web-search result."""
+def _print_supplier_card(detail: dict, *, ai_sourced: bool = False) -> None:
+    """Print a Rich-formatted supplier card."""
     panel_content = []
-    if supplier.get("address"):
-        panel_content.append(f"[dim]Address:[/dim]  {supplier['address']}")
-    if supplier.get("phone"):
-        panel_content.append(f"[dim]Phone:[/dim]    [green]{supplier['phone']}[/green]")
-    if supplier.get("website"):
-        panel_content.append(f"[dim]Website:[/dim]  [blue]{supplier['website']}[/blue]")
-    panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
+    if detail.get("address"):
+        panel_content.append(f"[dim]Address:[/dim]  {detail['address']}")
+    if detail.get("phone"):
+        panel_content.append(f"[dim]Phone:[/dim]    [green]{detail['phone']}[/green]")
+    if detail.get("website"):
+        panel_content.append(f"[dim]Website:[/dim]  [blue]{detail['website']}[/blue]")
+    if detail.get("categories"):
+        panel_content.append(f"[dim]Categories:[/dim] {', '.join(detail['categories'])}")
+    if detail.get("items"):
+        panel_content.append(f"[dim]Items:[/dim]    {', '.join(detail['items'])}")
+    if ai_sourced:
+        panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
 
-    console.rule(f"[bold cyan]{supplier.get('name', 'Unknown')}[/bold cyan]")
+    console.rule(f"[bold cyan]{detail['name']}[/bold cyan]")
     for line in panel_content:
         console.print(f"  {line}")
     console.print()
 ```
+
+**Why reuse `_print_supplier_card` instead of a separate helper:** The two card types are identical except for the AI disclaimer line. A second function would duplicate 12 lines of Rich formatting logic, creating two places to update if the card format ever changes. The keyword-only `ai_sourced` parameter adds zero noise to existing call sites (defaults to `False`) and makes the distinction explicit at the `web_search_cmd` call site (`ai_sourced=True`).
 
 **Step 4: Run tests to verify they pass**
 
@@ -368,7 +402,7 @@ def _print_web_supplier_card(supplier: dict) -> None:
 cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand -v
 ```
 
-Expected: All 6 tests PASS.
+Expected: All 7 tests PASS.
 
 **Step 5: Run full test suite to check for regressions**
 
@@ -381,8 +415,7 @@ Expected: All existing tests pass, no regressions.
 **Step 6: Commit**
 
 ```bash
-git add src/forest_cli/cli.py tests/test_cli.py
-git commit -m "feat: add web-search command using Claude API"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && git add src/forest_cli/cli.py tests/test_cli.py && git commit -m "feat: add web-search command using Claude API"
 ```
 
 ---
@@ -405,7 +438,7 @@ Expected: `sk-ant-...` (first 20 chars). If empty, this task cannot proceed — 
 cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && forest web-search "moringa"
 ```
 
-Expected: Prints 1-8 supplier cards with name, address, phone, website fields. No Python tracebacks.
+Expected: Prints 1-8 supplier cards with name, address, phone, website fields. Each card ends with the `Source: AI-generated — verify before visiting` disclaimer. No Python tracebacks.
 
 **Step 3: Test no-API-key error path**
 
@@ -413,7 +446,7 @@ Expected: Prints 1-8 supplier cards with name, address, phone, website fields. N
 ANTHROPIC_API_KEY="" forest web-search "moringa"
 ```
 
-Expected: `Error: ANTHROPIC_API_KEY environment variable is not set.` and exit code 1.
+Expected: `Error: ANTHROPIC_API_KEY environment variable is not set.` printed to stderr, exit code 1.
 
 **Step 4: If the smoke test found a bug, fix and commit**
 
