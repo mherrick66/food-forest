@@ -31,7 +31,7 @@ def search_web(client: Any, query: str) -> list[dict[str, str]]:
         "Return a JSON array of suppliers as described."
     )
     message = client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
