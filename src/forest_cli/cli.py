@@ -14,6 +14,7 @@ from forest_cli.db import (
     list_suppliers,
     add_supplier,
 )
+from forest_cli.web_search import search_web
 
 console = Console()
 
@@ -111,7 +112,50 @@ def add_supplier_cmd() -> None:
     console.print(f"\n[green bold]Added '[italic]{name}[/italic]' (id={supplier_id})[/green bold]")
 
 
-def _print_supplier_card(detail: dict) -> None:
+@main.command("web-search")
+@click.argument("query")
+def web_search_cmd(query: str) -> None:
+    """Ask Claude AI to recall local suppliers for QUERY near Sarasota, FL.
+
+    QUERY: plant or item to search for (e.g. 'moringa', 'drip tape')
+
+    Results come from Claude's training knowledge, not a live internet search.
+    Requires ANTHROPIC_API_KEY environment variable.
+    Results are AI-generated — verify before visiting.
+    """
+    import os
+    import anthropic
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise click.ClickException(
+            "ANTHROPIC_API_KEY environment variable is not set. "
+            "Set it to your Anthropic API key to use web-search."
+        )
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    console.print(f"\n[cyan]Asking Claude about '[bold]{query}[/bold]' suppliers near Sarasota, FL...[/cyan]\n")
+
+    results = search_web(client, query)
+
+    if not results:
+        console.print(f"[yellow]No suppliers found for '[bold]{query}[/bold]'.[/yellow]")
+        return
+
+    # Handle raw fallback
+    if len(results) == 1 and "_raw" in results[0]:
+        console.print("[yellow]Warning: Could not parse structured results. Raw response:[/yellow]")
+        console.print(results[0]["_raw"])
+        return
+
+    console.print(f"[green bold]Found {len(results)} supplier(s) (AI-generated — verify before visiting):[/green bold]\n")
+
+    for supplier in results:
+        _print_supplier_card(supplier, ai_sourced=True)
+
+
+def _print_supplier_card(detail: dict, *, ai_sourced: bool = False) -> None:
     """Print a Rich-formatted supplier card."""
     panel_content = []
     if detail.get("address"):
@@ -124,6 +168,8 @@ def _print_supplier_card(detail: dict) -> None:
         panel_content.append(f"[dim]Categories:[/dim] {', '.join(detail['categories'])}")
     if detail.get("items"):
         panel_content.append(f"[dim]Items:[/dim]    {', '.join(detail['items'])}")
+    if ai_sourced:
+        panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
 
     console.rule(f"[bold cyan]{detail['name']}[/bold cyan]")
     for line in panel_content:

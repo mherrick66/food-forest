@@ -224,7 +224,7 @@ class TestTopLevelHelp:
     def test_main_help_lists_commands(self, runner):
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        for cmd in ["search", "list-categories", "list-suppliers", "add-supplier"]:
+        for cmd in ["search", "list-categories", "list-suppliers", "add-supplier", "web-search"]:
             assert cmd in result.output
 
 
@@ -235,6 +235,7 @@ class TestTopLevelHelp:
     ["list-categories", "--help"],
     ["list-suppliers", "--help"],
     ["add-supplier", "--help"],
+    ["web-search", "--help"],
 ])
 def test_all_commands_help_exit_zero(runner, args):
     result = runner.invoke(main, args)
@@ -343,3 +344,128 @@ class TestIntegration:
             result = int_runner.invoke(main, ["list-suppliers", "--category", "irrigation"])
         assert result.exit_code == 0
         assert "Ewing" in result.output or "SiteOne" in result.output or "Suncoast" in result.output
+
+
+class TestWebSearchCommand:
+    # W-02: missing ANTHROPIC_API_KEY prints error to stderr and exits nonzero
+    def test_web_search_no_api_key_exits_nonzero(self, runner, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code != 0
+        # ClickException writes to stderr when mix_stderr=False
+        assert "ANTHROPIC_API_KEY" in result.stderr or "api key" in result.stderr.lower()
+
+    # W-03: successful search prints supplier name to stdout
+    def test_web_search_prints_supplier_name(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code == 0
+        assert "Web Nursery" in result.output
+
+    # W-04: zero results shows informative message
+    def test_web_search_no_results_message(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        with patch("forest_cli.cli.search_web", return_value=[]):
+            result = runner.invoke(main, ["web-search", "xyzzy_impossible"])
+        assert result.exit_code == 0
+        assert "no" in result.output.lower() or "not found" in result.output.lower()
+
+    # W-05: raw fallback result prints warning and raw text to stdout
+    def test_web_search_raw_fallback_prints_warning(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        with patch("forest_cli.cli.search_web", return_value=[{"_raw": "some raw text"}]):
+            result = runner.invoke(main, ["web-search", "avocado"])
+        assert result.exit_code == 0
+        # Warning message and raw text both go to stdout (not ClickException)
+        assert "raw" in result.output.lower() or "some raw text" in result.output
+
+    # W-06: AI disclaimer is printed for each result card
+    def test_web_search_prints_ai_disclaimer(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code == 0
+        # The ai_sourced disclaimer must appear — this is the key differentiator from local search
+        assert "AI-generated" in result.output or "verify before visiting" in result.output.lower()
+
+    # W-07: no stderr on successful web-search (consistent with TestNoStderr)
+    def test_no_stderr_on_web_search(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.stderr == ""
+
+    # W-08: search_web not called when API key is missing
+    def test_web_search_no_api_key_does_not_call_search_web(self, runner, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with patch("forest_cli.cli.search_web") as mock_search_web:
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code != 0
+        mock_search_web.assert_not_called()
+
+    # W-09: missing query arg exits nonzero
+    def test_web_search_requires_query_arg(self, runner):
+        result = runner.invoke(main, ["web-search"])
+        assert result.exit_code != 0
+
+    # W-10: multiple results — all names printed
+    def test_web_search_multiple_results(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [
+            {"name": "Nursery One", "address": "1 St", "phone": "", "website": ""},
+            {"name": "Nursery Two", "address": "2 St", "phone": "", "website": ""},
+            {"name": "Nursery Three", "address": "3 St", "phone": "", "website": ""},
+        ]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "avocado"])
+        assert result.exit_code == 0
+        assert "Nursery One" in result.output
+        assert "Nursery Two" in result.output
+        assert "Nursery Three" in result.output
+
+    # W-11: empty string optional fields do not crash
+    def test_web_search_empty_optional_fields(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Minimal Nursery", "address": "", "phone": "", "website": ""}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code == 0
+        assert "Minimal Nursery" in result.output
+
+    # W-12: None values for optional fields do not crash
+    def test_web_search_none_optional_fields(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Null Nursery", "address": None, "phone": None, "website": None}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code == 0
+        assert "Null Nursery" in result.output
+
+    # R-01: local search does not print AI disclaimer (regression)
+    def test_local_search_no_ai_disclaimer(self, runner):
+        detail = {**FAKE_SUPPLIERS[0], "categories": ["plants"], "items": ["Wax Myrtle"]}
+        with patch("forest_cli.cli.get_connection"), \
+             patch("forest_cli.cli.search_suppliers", return_value=FAKE_SUPPLIERS), \
+             patch("forest_cli.cli.supplier_detail", return_value=detail):
+            result = runner.invoke(main, ["search", "wax myrtle"])
+        assert result.exit_code == 0
+        assert "AI-generated" not in result.output
+        assert "verify before visiting" not in result.output.lower()
+
+    # R-02: anthropic not imported at module level (regression)
+    def test_anthropic_not_imported_at_module_level(self):
+        import sys
+        import subprocess
+        # Run in a fresh subprocess so sys.modules is clean
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; import forest_cli.cli; "
+             "assert 'anthropic' not in sys.modules, "
+             "'anthropic was imported at module level'"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"anthropic was imported at module level: {result.stderr}"
