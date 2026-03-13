@@ -243,18 +243,44 @@ cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && git add src/for
 
 **Step 1: Write the failing test**
 
-Add to `tests/test_cli.py` (at end of file, before or after the last class). Note: `runner` fixture is already defined in this file; `monkeypatch` is a built-in pytest fixture. Both work as method parameters in a class-based test.
+Add to `tests/test_cli.py`. There are three places to change:
+
+**1a. Update `TestTopLevelHelp.test_main_help_lists_commands`** to include `web-search` in the checked commands. This keeps the invariant test complete — it is the authoritative assertion that every command appears in top-level help:
+
+```python
+class TestTopLevelHelp:
+    # T-29
+    def test_main_help_lists_commands(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        for cmd in ["search", "list-categories", "list-suppliers", "add-supplier", "web-search"]:
+            assert cmd in result.output
+```
+
+**1b. Update `test_all_commands_help_exit_zero` parametrize** to include `web-search --help`, keeping the invariant complete for all commands:
+
+```python
+@pytest.mark.parametrize("args", [
+    ["--help"],
+    ["search", "--help"],
+    ["list-categories", "--help"],
+    ["list-suppliers", "--help"],
+    ["add-supplier", "--help"],
+    ["web-search", "--help"],
+])
+def test_all_commands_help_exit_zero(runner, args):
+    result = runner.invoke(main, args)
+    assert result.exit_code == 0
+```
+
+**Why update the invariant tests:** `test_main_help_lists_commands` and `test_all_commands_help_exit_zero` are the canonical invariants that every command is registered and has working help. Leaving `web-search` out of these would make them stale and incomplete. New `TestWebSearchCommand` tests cover scenario-level behaviour; the invariant tests cover structural completeness.
+
+**1c. Add `TestWebSearchCommand` class** (at end of file, after `TestBoundaryEdge`/`TestIntegration`). Note: `runner` fixture is already defined module-level in this file; `monkeypatch` is a built-in pytest fixture. Both work as method parameters in a class-based test.
 
 Note on stderr: `CliRunner(mix_stderr=False)` separates stdout and stderr. `click.ClickException` writes to stderr. Tests that assert on error messages use `result.stderr`. Tests that assert on successful output use `result.output` (stdout).
 
 ```python
 class TestWebSearchCommand:
-    # W-01: command exists and shows help
-    def test_web_search_help(self, runner):
-        result = runner.invoke(main, ["web-search", "--help"])
-        assert result.exit_code == 0
-        assert "QUERY" in result.output or "query" in result.output.lower()
-
     # W-02: missing ANTHROPIC_API_KEY prints error to stderr and exits nonzero
     def test_web_search_no_api_key_exits_nonzero(self, runner, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -289,11 +315,6 @@ class TestWebSearchCommand:
         # Warning message and raw text both go to stdout (not ClickException)
         assert "raw" in result.output.lower() or "some raw text" in result.output
 
-    # W-06: main help lists web-search command
-    def test_main_help_includes_web_search(self, runner):
-        result = runner.invoke(main, ["--help"])
-        assert "web-search" in result.output
-
     # W-07: no stderr on successful web-search (consistent with TestNoStderr)
     def test_no_stderr_on_web_search(self, runner, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
@@ -303,13 +324,15 @@ class TestWebSearchCommand:
         assert result.stderr == ""
 ```
 
-**Step 2: Run test to verify it fails**
+**Why W-01 and W-06 are removed from `TestWebSearchCommand`:** W-01 (help exit code) is now covered by `test_all_commands_help_exit_zero`; W-06 (main help includes web-search) is now covered by `test_main_help_lists_commands`. Keeping them here would duplicate invariant coverage — if the invariants are updated (step 1a/1b), the duplicates in `TestWebSearchCommand` are noise.
+
+**Step 2: Run tests to verify they fail**
 
 ```bash
-cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand -v
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand tests/test_cli.py::TestTopLevelHelp tests/test_cli.py::test_all_commands_help_exit_zero -v
 ```
 
-Expected: `AttributeError` or `UsageError` — `web-search` command not found.
+Expected: `TestWebSearchCommand` tests fail with `AttributeError` or `UsageError` — `web-search` command not found. `TestTopLevelHelp::test_main_help_lists_commands` fails because `web-search` is not yet in the help output. `test_all_commands_help_exit_zero[args6]` (the new `web-search --help` param) fails similarly.
 
 **Step 3: Write minimal implementation**
 
@@ -399,10 +422,10 @@ def _print_supplier_card(detail: dict, *, ai_sourced: bool = False) -> None:
 **Step 4: Run tests to verify they pass**
 
 ```bash
-cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand -v
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand tests/test_cli.py::TestTopLevelHelp tests/test_cli.py::test_all_commands_help_exit_zero -v
 ```
 
-Expected: All 7 tests PASS.
+Expected: All 5 `TestWebSearchCommand` tests pass; `test_main_help_lists_commands` passes (now includes `web-search`); all 6 `test_all_commands_help_exit_zero` parametrized cases pass.
 
 **Step 5: Run full test suite to check for regressions**
 
@@ -435,15 +458,15 @@ Expected: `sk-ant-...` (first 20 chars). If empty, this task cannot proceed — 
 **Step 2: Run live smoke test**
 
 ```bash
-cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && forest web-search "moringa"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && pip install -e ".[dev]" -q && forest web-search "moringa"
 ```
 
-Expected: Prints 1-8 supplier cards with name, address, phone, website fields. Each card ends with the `Source: AI-generated — verify before visiting` disclaimer. No Python tracebacks.
+The `pip install -e .` re-installs from the worktree path, ensuring the `forest` entrypoint on PATH points to this worktree's code (not a prior install from the main repo). Expected: Prints 1-8 supplier cards with name, address, phone, website fields. Each card ends with the `Source: AI-generated — verify before visiting` disclaimer. No Python tracebacks.
 
 **Step 3: Test no-API-key error path**
 
 ```bash
-ANTHROPIC_API_KEY="" forest web-search "moringa"
+cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && ANTHROPIC_API_KEY="" forest web-search "moringa"
 ```
 
 Expected: `Error: ANTHROPIC_API_KEY environment variable is not set.` printed to stderr, exit code 1.
