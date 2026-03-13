@@ -245,7 +245,7 @@ cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && git add src/for
 
 Add to `tests/test_cli.py`. There are three places to change:
 
-**1a. Update `TestTopLevelHelp.test_main_help_lists_commands`** to include `web-search` in the checked commands. This keeps the invariant test complete — it is the authoritative assertion that every command appears in top-level help:
+**1a. Replace the body of `TestTopLevelHelp.test_main_help_lists_commands`** to include `web-search` in the checked commands. The existing class definition stays; only the command list in the assertion changes. This keeps the invariant test complete — it is the authoritative assertion that every command appears in top-level help:
 
 ```python
 class TestTopLevelHelp:
@@ -257,7 +257,7 @@ class TestTopLevelHelp:
             assert cmd in result.output
 ```
 
-**1b. Update `test_all_commands_help_exit_zero` parametrize** to include `web-search --help`, keeping the invariant complete for all commands:
+**1b. Replace the `@pytest.mark.parametrize` decorator on `test_all_commands_help_exit_zero`** to include `web-search --help`, keeping the invariant complete for all commands. The existing function is replaced in full:
 
 ```python
 @pytest.mark.parametrize("args", [
@@ -315,6 +315,16 @@ class TestWebSearchCommand:
         # Warning message and raw text both go to stdout (not ClickException)
         assert "raw" in result.output.lower() or "some raw text" in result.output
 
+    # W-06: AI disclaimer is printed for each result card
+    def test_web_search_prints_ai_disclaimer(self, runner, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+        fake_results = [{"name": "Web Nursery", "address": "5 Web St", "phone": "(941) 555-9999", "website": "https://webnursery.com"}]
+        with patch("forest_cli.cli.search_web", return_value=fake_results):
+            result = runner.invoke(main, ["web-search", "moringa"])
+        assert result.exit_code == 0
+        # The ai_sourced disclaimer must appear — this is the key differentiator from local search
+        assert "AI-generated" in result.output or "verify before visiting" in result.output.lower()
+
     # W-07: no stderr on successful web-search (consistent with TestNoStderr)
     def test_no_stderr_on_web_search(self, runner, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
@@ -324,7 +334,7 @@ class TestWebSearchCommand:
         assert result.stderr == ""
 ```
 
-**Why W-01 and W-06 are removed from `TestWebSearchCommand`:** W-01 (help exit code) is now covered by `test_all_commands_help_exit_zero`; W-06 (main help includes web-search) is now covered by `test_main_help_lists_commands`. Keeping them here would duplicate invariant coverage — if the invariants are updated (step 1a/1b), the duplicates in `TestWebSearchCommand` are noise.
+**Why W-01 is not in `TestWebSearchCommand`:** W-01 (help exit code) is covered by `test_all_commands_help_exit_zero`. Keeping it here would duplicate invariant coverage. W-06 is now the AI disclaimer test — verifying the core differentiating feature that web-search results are marked as AI-generated, which no other test covers.
 
 **Step 2: Run tests to verify they fail**
 
@@ -392,7 +402,7 @@ def web_search_cmd(query: str) -> None:
         _print_supplier_card(supplier, ai_sourced=True)
 ```
 
-**3c. Extend `_print_supplier_card`** at the bottom of `cli.py` to accept an `ai_sourced` parameter:
+**3c. Replace the existing `_print_supplier_card` definition** in `cli.py` (currently the last function, defined after all commands) with the version below that accepts an `ai_sourced` keyword parameter. Do not add a second definition — replace the existing one in place. The call sites in `search` already pass no `ai_sourced` argument and will continue to work because the parameter defaults to `False`.
 
 ```python
 def _print_supplier_card(detail: dict, *, ai_sourced: bool = False) -> None:
@@ -425,7 +435,7 @@ def _print_supplier_card(detail: dict, *, ai_sourced: bool = False) -> None:
 cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/test_cli.py::TestWebSearchCommand tests/test_cli.py::TestTopLevelHelp tests/test_cli.py::test_all_commands_help_exit_zero -v
 ```
 
-Expected: All 5 `TestWebSearchCommand` tests pass; `test_main_help_lists_commands` passes (now includes `web-search`); all 6 `test_all_commands_help_exit_zero` parametrized cases pass.
+Expected: All 6 `TestWebSearchCommand` tests pass; `test_main_help_lists_commands` passes (now includes `web-search`); all 6 `test_all_commands_help_exit_zero` parametrized cases pass.
 
 **Step 5: Run full test suite to check for regressions**
 
