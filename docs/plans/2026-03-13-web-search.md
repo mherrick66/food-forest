@@ -2,9 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use trycycle-executing to implement this plan task-by-task.
 
-**Goal:** Add a `forest web-search` command that uses the Anthropic Claude API to find suppliers on the internet, complementing (not replacing) the existing local `forest search` command.
+**Goal:** Add a `forest web-search` command that uses the Anthropic Claude API to find suppliers, complementing (not replacing) the existing local `forest search` command.
 
-**Architecture:** A new `web_search.py` module performs a live web search by calling Claude with the `computer-use` / `web_search` tool or via a prompt that instructs it to synthesize publicly-available information about local nurseries and suppliers. Results are printed in the same Rich card format as the existing `search` command. The local DB is never touched by this feature.
+**Architecture:** A new `web_search.py` module calls the Anthropic Claude API with a structured prompt asking Claude to recall suppliers near Sarasota, FL from its training knowledge. Results are printed in the same Rich card format as the existing `search` command. The local DB is never touched by this feature.
+
+**Important framing:** This is not a live internet search — it queries Claude's training knowledge about local businesses. The command is still named `web-search` because it retrieves information not in the local DB, but all output is clearly labelled as AI-sourced so users know to verify. The CLI docstring must not claim "internet" access.
 
 **Tech Stack:** Python 3.11+, `anthropic` SDK (>=0.25), `click`, `rich`, existing `forest_cli` package structure.
 
@@ -14,17 +16,17 @@
 
 ### Claude API Strategy
 
-The simplest approach: call `claude-3-5-haiku-20241022` (fast, cheap) with a prompt that asks it to list real local suppliers for a given item in the Sarasota, FL area. Claude's training data includes business listings and it can synthesize plausible results. No web_search tool needed — a plain completion works and avoids needing extra API permissions.
+Call `claude-3-5-haiku-20241022` (fast, cheap) with a system prompt asking it to list real local suppliers for a given item in the Sarasota, FL area. Claude's training data includes business listings and can synthesize plausible results. No `web_search` tool needed — a plain completion works and avoids needing extra API permissions.
 
 API key: read from env var `ANTHROPIC_API_KEY`. If unset, print a clear error and exit 1.
 
 ### Output Format
 
-Results printed as Rich-formatted cards matching `_print_supplier_card()` in `cli.py`. Each card shows: name, address (if known), phone (if known), website (if known), note that it's an AI-sourced result (so user knows to verify).
+Results printed as Rich-formatted cards matching the pattern of `_print_supplier_card()` in `cli.py`. Each card shows: name, address (if known), phone (if known), website (if known), plus a note that it is AI-sourced so the user knows to verify.
 
 ### Response Parsing
 
-Ask Claude to return JSON (structured output). Use a system prompt that requests a JSON array of supplier objects with keys: `name`, `address`, `phone`, `website`. Parse with `json.loads`. If parse fails, fall back to printing the raw text with a warning.
+Ask Claude to return JSON (structured output). Use a system prompt that requests a JSON array of supplier objects with keys: `name`, `address`, `phone`, `website`. Parse with `json.loads`. Strip markdown code fences if present. If parse fails, fall back to printing the raw text with a warning.
 
 ---
 
@@ -66,10 +68,11 @@ git commit -m "feat: add anthropic dependency for web-search feature"
 
 **Files:**
 - Create: `src/forest_cli/web_search.py`
+- Create: `tests/test_web_search.py`
 
 **Step 1: Write the failing test**
 
-In `tests/test_web_search.py`:
+Create `tests/test_web_search.py`:
 
 ```python
 # tests/test_web_search.py
@@ -118,7 +121,7 @@ class TestSearchWeb:
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_message
         results = search_web(mock_client, "avocado")
-        # fallback: returns list with one dict containing raw 'text' key
+        # fallback: returns list with one dict containing raw '_raw' key
         assert isinstance(results, list)
         assert results[0].get("_raw") is not None
 
@@ -127,8 +130,9 @@ class TestSearchWeb:
         client = _mock_client_response(fake)
         search_web(client, "jackfruit")
         call_kwargs = client.messages.create.call_args
-        prompt_text = str(call_kwargs)
-        assert "jackfruit" in prompt_text.lower() or "jackfruit" in str(call_kwargs[1]).lower()
+        # call_args is a call object: [0] is positional args tuple, [1] is kwargs dict
+        all_args_str = str(call_kwargs[0]) + str(call_kwargs[1])
+        assert "jackfruit" in all_args_str.lower()
 ```
 
 **Step 2: Run test to verify it fails**
@@ -219,15 +223,16 @@ git commit -m "feat: add web_search module with Claude API call and tests"
 
 **Files:**
 - Modify: `src/forest_cli/cli.py`
-- Test: `tests/test_cli.py` (add new class)
+- Modify: `tests/test_cli.py` (add new class)
 
 **Step 1: Write the failing test**
 
-Add to `tests/test_cli.py`:
+Add to `tests/test_cli.py` (at end of file, before or after the last class):
 
 ```python
-# Add at top with other imports
-import os
+# Add at top with other imports if not already present:
+# from unittest.mock import patch  (already imported)
+# import os  (not needed — monkeypatch handles env)
 
 class TestWebSearchCommand:
     # W-01: command exists and shows help
@@ -260,7 +265,7 @@ class TestWebSearchCommand:
         assert result.exit_code == 0
         assert "no" in result.output.lower() or "not found" in result.output.lower()
 
-    # W-05: raw fallback result prints warning
+    # W-05: raw fallback result prints warning and raw text
     def test_web_search_raw_fallback_prints_warning(self, runner, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
         with patch("forest_cli.cli.search_web", return_value=[{"_raw": "some raw text"}]):
@@ -286,7 +291,7 @@ Expected: `AttributeError` or `UsageError` — `web-search` command not found.
 
 Edit `src/forest_cli/cli.py`:
 
-1. Add imports at the top:
+1. Add imports near the top, after existing imports:
 
 ```python
 import os
@@ -294,16 +299,37 @@ import anthropic
 from forest_cli.web_search import search_web
 ```
 
-2. Add the new command after `add_supplier_cmd`:
+2. Add `_print_web_supplier_card` helper function before the `web_search_cmd` command (define before use, consistent with `_print_supplier_card` placement):
+
+```python
+def _print_web_supplier_card(supplier: dict) -> None:
+    """Print a Rich-formatted card for a web-search result."""
+    panel_content = []
+    if supplier.get("address"):
+        panel_content.append(f"[dim]Address:[/dim]  {supplier['address']}")
+    if supplier.get("phone"):
+        panel_content.append(f"[dim]Phone:[/dim]    [green]{supplier['phone']}[/green]")
+    if supplier.get("website"):
+        panel_content.append(f"[dim]Website:[/dim]  [blue]{supplier['website']}[/blue]")
+    panel_content.append("[dim italic]Source: AI-generated — verify before visiting[/dim italic]")
+
+    console.rule(f"[bold cyan]{supplier.get('name', 'Unknown')}[/bold cyan]")
+    for line in panel_content:
+        console.print(f"  {line}")
+    console.print()
+```
+
+3. Add the `web-search` command after `add_supplier_cmd` (and after `_print_web_supplier_card`):
 
 ```python
 @main.command("web-search")
 @click.argument("query")
 def web_search_cmd(query: str) -> None:
-    """Search the internet (via Claude AI) for suppliers near Sarasota, FL.
+    """Ask Claude AI to recall local suppliers for QUERY near Sarasota, FL.
 
     QUERY: plant or item to search for (e.g. 'moringa', 'drip tape')
 
+    Results come from Claude's training knowledge, not a live internet search.
     Requires ANTHROPIC_API_KEY environment variable.
     Results are AI-generated — verify before visiting.
     """
@@ -316,12 +342,12 @@ def web_search_cmd(query: str) -> None:
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    console.print(f"\n[cyan]Searching online for '[bold]{query}[/bold]' suppliers near Sarasota, FL...[/cyan]\n")
+    console.print(f"\n[cyan]Asking Claude about '[bold]{query}[/bold]' suppliers near Sarasota, FL...[/cyan]\n")
 
     results = search_web(client, query)
 
     if not results:
-        console.print(f"[yellow]No online suppliers found for '[bold]{query}[/bold]'.[/yellow]")
+        console.print(f"[yellow]No suppliers found for '[bold]{query}[/bold]'.[/yellow]")
         return
 
     # Handle raw fallback
@@ -330,28 +356,13 @@ def web_search_cmd(query: str) -> None:
         console.print(results[0]["_raw"])
         return
 
-    console.print(f"[green bold]Found {len(results)} supplier(s) online (AI-sourced — verify before visiting):[/green bold]\n")
+    console.print(f"[green bold]Found {len(results)} supplier(s) (AI-generated — verify before visiting):[/green bold]\n")
 
     for supplier in results:
         _print_web_supplier_card(supplier)
-
-
-def _print_web_supplier_card(supplier: dict) -> None:
-    """Print a Rich-formatted card for a web-search result."""
-    panel_content = []
-    if supplier.get("address"):
-        panel_content.append(f"[dim]Address:[/dim]  {supplier['address']}")
-    if supplier.get("phone"):
-        panel_content.append(f"[dim]Phone:[/dim]    [green]{supplier['phone']}[/green]")
-    if supplier.get("website"):
-        panel_content.append(f"[dim]Website:[/dim]  [blue]{supplier['website']}[/blue]")
-    panel_content.append("[dim italic]Source: AI web search — verify before visiting[/dim italic]")
-
-    console.rule(f"[bold cyan]{supplier.get('name', 'Unknown')}[/bold cyan]")
-    for line in panel_content:
-        console.print(f"  {line}")
-    console.print()
 ```
+
+**Note on placement:** `_print_web_supplier_card` must be defined before `web_search_cmd` in the file. Place it immediately before the `@main.command("web-search")` decorator line.
 
 **Step 4: Run tests to verify they pass**
 
@@ -380,13 +391,15 @@ git commit -m "feat: add web-search command using Claude API"
 
 ## Task 4: Smoke test the live command
 
+**Purpose:** Verify the command works end-to-end with a real API key. This is an acceptance check, not a development task — no code changes are expected. If the smoke test reveals a bug, fix it in a follow-up commit before declaring this task done.
+
 **Step 1: Check if ANTHROPIC_API_KEY is set**
 
 ```bash
 echo $ANTHROPIC_API_KEY | head -c 20
 ```
 
-Expected: `sk-ant-...` (first 20 chars). If empty, set it: `export ANTHROPIC_API_KEY=<your-key>`.
+Expected: `sk-ant-...` (first 20 chars). If empty, this task cannot proceed — skip to the error-path test below and note that the live test was skipped.
 
 **Step 2: Run live smoke test**
 
@@ -404,41 +417,11 @@ ANTHROPIC_API_KEY="" forest web-search "moringa"
 
 Expected: `Error: ANTHROPIC_API_KEY environment variable is not set.` and exit code 1.
 
-**Step 4: Commit if any fixes needed from smoke test**
+**Step 4: If the smoke test found a bug, fix and commit**
+
+Only commit if a real code defect was found and fixed:
 
 ```bash
 git add -p
 git commit -m "fix: address issues found in smoke testing web-search"
 ```
-
----
-
-## Task 5: Update `pyproject.toml` test config and finalize
-
-**Files:**
-- Modify: `pyproject.toml`
-
-**Step 1: Ensure `test_web_search.py` is not excluded**
-
-Check `pyproject.toml` `addopts` — only `test_live.py` should be excluded (already the case). No change needed if it already reads:
-
-```toml
-addopts = "--ignore=tests/test_live.py"
-```
-
-**Step 2: Run full test suite one final time**
-
-```bash
-cd /home/mikeherrick/claude/food-forest/.worktrees/web-search && python -m pytest tests/ -v
-```
-
-Expected: All tests pass (existing + new web_search + new CLI tests).
-
-**Step 3: Final commit**
-
-```bash
-git add pyproject.toml
-git commit -m "chore: verify test config includes web_search tests"
-```
-
-Only commit if `pyproject.toml` actually changed.
