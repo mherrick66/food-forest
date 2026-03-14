@@ -112,6 +112,28 @@ def add_supplier_cmd() -> None:
     console.print(f"\n[green bold]Added '[italic]{name}[/italic]' (id={supplier_id})[/green bold]")
 
 
+@main.command("export-json")
+def export_json_cmd() -> None:
+    """Export all suppliers to stdout as JSON."""
+    import json
+
+    conn = get_connection()
+    suppliers = list_suppliers(conn)
+    output = []
+    for s in suppliers:
+        detail = supplier_detail(conn, s["id"])
+        if detail:
+            output.append({
+                "name": detail.get("name") or "",
+                "address": detail.get("address") or "",
+                "phone": detail.get("phone") or "",
+                "website": detail.get("website") or "",
+                "categories": detail.get("categories") or [],
+                "items": detail.get("items") or [],
+            })
+    click.echo(json.dumps(output, indent=2))
+
+
 @main.command("web-search")
 @click.argument("query")
 def web_search_cmd(query: str) -> None:
