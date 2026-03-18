@@ -14,8 +14,8 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Sweet Bay Nursery',
-   '6831 Swift Rd, Sarasota, FL 34231',
-   '(941) 923-6909',
+   '10824 Erie Rd, Parrish, FL 34219',
+   '(941) 776-0501',
    NULL);
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
@@ -25,15 +25,15 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
    'https://jptropicals.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
-  ('Ewing Irrigation & Landscape Supply',
-   '1725 Cattlemen Rd, Sarasota, FL 34232',
-   '(941) 371-3331',
-   'https://ewing1.com');
+  ('Ewing Outdoor Supply',
+   '6235 McIntosh Road, Sarasota, FL 34238',
+   '(941) 927-9530',
+   'https://ewingoutdoorsupply.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('SiteOne Landscape Supply',
-   '8750 Fruitville Rd, Sarasota, FL 34240',
-   '(941) 377-9922',
+   '6055 Clark Center Ave, Sarasota, FL 34238',
+   '(941) 923-2517',
    'https://siteone.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
@@ -44,14 +44,14 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Tractor Supply Co. — Sarasota',
-   '6240 S Tamiami Trail, Sarasota, FL 34231',
-   '(941) 923-1113',
+   '7130 Fruitville Rd, Sarasota, FL 34240',
+   '(941) 342-0955',
    'https://tractorsupply.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
-  ('Myakka City Feed & Farm Supply',
-   '10900 State Road 70 E, Myakka City, FL 34251',
-   '(941) 322-1500',
+  ('Myakka Ranch & Farm Supply',
+   '36140 State Road 70 E, Myakka City, FL 34251',
+   '(941) 322-1783',
    NULL);
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
@@ -98,20 +98,20 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Home Depot Garden Center — Sarasota',
-   '3010 Fruitville Rd, Sarasota, FL 34237',
-   '(941) 953-0700',
+   '4111 Cattlemen Rd, Sarasota, FL 34233',
+   '(941) 377-1900',
    'https://homedepot.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Lowes Garden Center — Sarasota',
-   '3591 Cattlemen Rd, Sarasota, FL 34232',
-   '(941) 371-8400',
+   '5750 Fruitville Rd, Sarasota, FL 34232',
+   '(941) 961-6261',
    'https://lowes.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
-  ('Ace Hardware & Feed — Osprey',
-   '13150 S Tamiami Trail, Osprey, FL 34229',
-   '(941) 966-2222',
+  ('DG Ace Hardware',
+   '1230 S Tamiami Trail, Osprey, FL 34229',
+   '(941) 918-0001',
    NULL);
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
