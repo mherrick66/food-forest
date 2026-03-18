@@ -55,6 +55,7 @@ SEED_ITEMS: list[tuple[str, str, list[str]]] = [
     ("Home Depot Garden Center — Sarasota", "fruit_trees", ["Citrus tree", "Fig tree", "Lemon tree", "Lime tree", "Orange tree"]),
     ("Home Depot Garden Center — Sarasota", "irrigation",  ["drip irrigation kit", "garden hose", "soaker hose", "sprinkler heads", "timer"]),
     ("Home Depot Garden Center — Sarasota", "seeds",       ["herb seeds", "vegetable seeds", "wildflower mix"]),
+    ("Hostetler Irrigation, Inc.",    "irrigation",  ["irrigation system installation", "drip irrigation", "sprinkler heads", "irrigation controllers", "landscape lighting", "wells", "pumps"]),
     ("Lowes Garden Center — Sarasota","plants",      ["Firebush", "Plumbago", "ornamental grasses"]),
     ("Lowes Garden Center — Sarasota","fruit_trees", ["Citrus tree", "Fig tree", "Lemon tree", "Orange tree"]),
     ("Lowes Garden Center — Sarasota","irrigation",  ["drip irrigation kit", "garden hose", "soaker hose", "sprinkler heads", "timer"]),

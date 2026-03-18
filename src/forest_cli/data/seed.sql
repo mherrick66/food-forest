@@ -55,6 +55,12 @@ INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
    'https://homedepot.com');
 
 INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
+  ('Hostetler Irrigation, Inc.',
+   '4553 Mariotti Ct #101, Sarasota, FL',
+   '(941) 924-5200',
+   'https://hostetlerirrigation.com');
+
+INSERT OR IGNORE INTO suppliers (name, address, phone, website) VALUES
   ('Lowes Garden Center — Sarasota',
    '5750 Fruitville Rd, Sarasota, FL 34232',
    '(941) 961-6261',
